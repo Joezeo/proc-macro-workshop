@@ -6,4 +6,16 @@
 // To run the code:
 //     $ cargo run
 
-fn main() {}
+use derive_builder::Builder;
+
+#[derive(Builder)]
+#[allow(dead_code)]
+pub struct Command {
+    executable: String,
+    args: Vec<String>,
+    current_dir: Option<String>,
+}
+
+fn main() {
+    let _ = Command::builder().executable("executable".into()).build().unwrap();
+}
