@@ -262,5 +262,5 @@ fn get_user_specified_ident_for_vec(field: &Field) -> syn::Result<Option<Ident>>
             }
         }
     }
-    Ok(core::option::Option::None)
+    Ok(None)
 }
