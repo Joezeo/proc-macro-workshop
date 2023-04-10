@@ -209,7 +209,10 @@ fn generate_build_function(
     Ok(ret)
 }
 
-fn get_generic_inner_type<'a>(t: &'a syn::Type, outter_ident: &str) -> core::option::Option<&'a syn::Type> {
+fn get_generic_inner_type<'a>(
+    t: &'a syn::Type,
+    outter_ident: &str,
+) -> core::option::Option<&'a syn::Type> {
     if let syn::Type::Path(syn::TypePath {
         qself: None,
         path: syn::Path { segments, .. },
@@ -247,7 +250,7 @@ fn get_user_specified_ident_for_vec(field: &Field) -> syn::Result<Option<Ident>>
                     if let Some(syn::NestedMeta::Meta(syn::Meta::NameValue(kv))) = nested.first() {
                         if kv.path.is_ident("each") {
                             if let syn::Lit::Str(ref lit_str) = kv.lit {
-                                return Ok(core::option::Option::Some(Ident::new(lit_str.value().as_str(), attr.span())));
+                                return Ok(Some(Ident::new(lit_str.value().as_str(), attr.span())));
                             }
                         } else {
                             if let Ok(syn::Meta::List(ref list)) = attr.parse_meta() {
