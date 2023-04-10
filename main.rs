@@ -12,6 +12,7 @@ use derive_builder::Builder;
 #[allow(dead_code)]
 pub struct Command {
     executable: String,
+    #[builder(each = "arg")]
     args: Vec<String>,
     current_dir: Option<String>,
 }
