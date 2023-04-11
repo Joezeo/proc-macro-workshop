@@ -6,6 +6,8 @@
 // To run the code:
 //     $ cargo run
 
+use std::marker::PhantomData;
+
 use derive_builder::Builder;
 use derive_debug::CustomDebug;
 
@@ -19,10 +21,12 @@ pub struct Command {
 }
 
 #[derive(CustomDebug)]
-pub struct Struct {
+pub struct Struct<T, U> {
     val: String,
     #[debug = "0b{:08b}"]
     num: u8,
+    u: U,
+    phantomdata: PhantomData<T>,
 }
 
 fn main() {

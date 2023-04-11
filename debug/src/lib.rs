@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, punctuated::Punctuated, DeriveInput, Field, Token};
+use syn::{parse_macro_input, parse_quote, punctuated::Punctuated, DeriveInput, Field, Token};
 
 type StructFileds = Punctuated<Field, Token![,]>;
 
@@ -53,6 +53,44 @@ fn get_user_specified_debug_format(field: &Field) -> syn::Result<std::option::Op
     Ok(None)
 }
 
+fn get_phantomdata_generic_type_name(field: &Field) -> syn::Result<Option<String>> {
+    if let syn::Type::Path(syn::TypePath {
+        path: syn::Path { ref segments, .. },
+        ..
+    }) = field.ty
+    {
+        if let Some(syn::PathSegment { ident, arguments }) = segments.last() {
+            if ident == "PhantomData" {
+                if let syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
+                    args,
+                    ..
+                }) = arguments
+                {
+                    if let Some(syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {path, ..}))) = args.first()
+                    {
+                        if let Some(generic_ident) = path.segments.first() {
+                            return Ok(Some(generic_ident.ident.to_string()))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+fn get_field_type_name(field: &Field) -> syn::Result<Option<String>> {
+    if let syn::Type::Path(syn::TypePath {
+        path: syn::Path { ref segments, .. },
+        ..
+    }) = field.ty {
+        if let Some(syn::PathSegment {ident, ..}) = segments.last() {
+            return Ok(Some(ident.to_string()))
+        }
+    }
+    Ok(None)
+}
+
 fn generate_implements_dubug_trait(
     ast: &DeriveInput,
     fields: &StructFileds,
@@ -60,7 +98,16 @@ fn generate_implements_dubug_trait(
     let mut field_set_clause = proc_macro2::TokenStream::new();
     let struct_name_ident = &ast.ident;
 
+    let mut phantomdata_generic_types = vec![];
+    let mut struct_field_types = vec![];
+
     for field in fields.iter() {
+        if let Some(generic_type) = get_phantomdata_generic_type_name(field)? {
+            phantomdata_generic_types.push(generic_type)
+        }
+        if let Some(field_type) = get_field_type_name(field)? {
+            struct_field_types.push(field_type)
+        }
         let field_name = &field.ident;
         let clause = if let Some(format) = get_user_specified_debug_format(field)? {
             quote!(
@@ -74,8 +121,21 @@ fn generate_implements_dubug_trait(
         field_set_clause.extend(clause);
     }
 
+    let mut generic_params = ast.generics.clone();
+    for g in generic_params.params.iter_mut() {
+        if let syn::GenericParam::Type(t) = g {
+            let type_param_name = t.ident.to_string();
+            if phantomdata_generic_types.contains(&type_param_name) && !struct_field_types.contains(&type_param_name) {
+                continue;
+            }
+            t.bounds.push(parse_quote!(std::fmt::Debug));
+        }
+    }
+
+    let (impl_generics, type_generics, where_clause) = generic_params.split_for_impl();
+
     let ret = quote!(
-        impl std::fmt::Debug for #struct_name_ident {
+        impl #impl_generics std::fmt::Debug for #struct_name_ident #type_generics #where_clause {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.debug_struct(stringify!(#struct_name_ident))
                     #field_set_clause
