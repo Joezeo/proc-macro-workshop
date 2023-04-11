@@ -7,6 +7,7 @@
 //     $ cargo run
 
 use derive_builder::Builder;
+use derive_debug::CustomDebug;
 
 #[derive(Builder)]
 #[allow(dead_code)]
@@ -15,6 +16,13 @@ pub struct Command {
     #[builder(each = "arg")]
     args: Vec<String>,
     current_dir: Option<String>,
+}
+
+#[derive(CustomDebug)]
+pub struct Struct {
+    val: String,
+    #[debug = "0b{:08b}"]
+    num: u8,
 }
 
 fn main() {
