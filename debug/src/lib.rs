@@ -40,7 +40,7 @@ fn get_fields_from_derive_input(ast: &DeriveInput) -> syn::Result<&StructFileds>
     }
 }
 
-fn get_user_specified_debug_format(field: &Field) -> syn::Result<std::option::Option<String>> {
+fn get_user_specified_debug_format(field: &Field) -> syn::Result<Option<String>> {
     for attr in field.attrs.iter() {
         if let Ok(syn::Meta::NameValue(ref kv)) = attr.parse_meta() {
             if kv.path.is_ident("debug") {
