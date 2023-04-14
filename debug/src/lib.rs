@@ -1,6 +1,14 @@
+mod type_path_visit;
+
+use std::collections::HashMap;
+
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, parse_quote, punctuated::Punctuated, DeriveInput, Field, Token};
+use syn::{
+    parse_macro_input, parse_quote, punctuated::Punctuated, visit::Visit, DeriveInput, Field,
+    Token, TypePath,
+};
+use type_path_visit::TypePathVisitor;
 
 type StructFileds = Punctuated<Field, Token![,]>;
 
@@ -66,10 +74,13 @@ fn get_phantomdata_generic_type_name(field: &Field) -> syn::Result<Option<String
                     ..
                 }) = arguments
                 {
-                    if let Some(syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {path, ..}))) = args.first()
+                    if let Some(syn::GenericArgument::Type(syn::Type::Path(syn::TypePath {
+                        path,
+                        ..
+                    }))) = args.first()
                     {
                         if let Some(generic_ident) = path.segments.first() {
-                            return Ok(Some(generic_ident.ident.to_string()))
+                            return Ok(Some(generic_ident.ident.to_string()));
                         }
                     }
                 }
@@ -83,12 +94,35 @@ fn get_field_type_name(field: &Field) -> syn::Result<Option<String>> {
     if let syn::Type::Path(syn::TypePath {
         path: syn::Path { ref segments, .. },
         ..
-    }) = field.ty {
-        if let Some(syn::PathSegment {ident, ..}) = segments.last() {
-            return Ok(Some(ident.to_string()))
+    }) = field.ty
+    {
+        if let Some(syn::PathSegment { ident, .. }) = segments.last() {
+            return Ok(Some(ident.to_string()));
         }
     }
     Ok(None)
+}
+
+fn get_generic_associate_types(ast: &DeriveInput) -> syn::Result<HashMap<String, Vec<TypePath>>> {
+    let origin_generic_param_names: Vec<String> = ast
+        .generics
+        .params
+        .iter()
+        .filter_map(|f| {
+            if let syn::GenericParam::Type(ty) = f {
+                return Some(ty.ident.to_string());
+            }
+            None
+        })
+        .collect();
+
+    let mut visitor = TypePathVisitor {
+        generic_type_names: origin_generic_param_names,
+        associate_type_paths: HashMap::new(),
+    };
+
+    visitor.visit_derive_input(ast);
+    return Ok(visitor.associate_type_paths);
 }
 
 fn generate_implements_dubug_trait(
@@ -101,6 +135,7 @@ fn generate_implements_dubug_trait(
     let mut phantomdata_generic_types = vec![];
     let mut struct_field_types = vec![];
 
+    let generic_associate_types = get_generic_associate_types(ast)?;
     for field in fields.iter() {
         if let Some(generic_type) = get_phantomdata_generic_type_name(field)? {
             phantomdata_generic_types.push(generic_type)
@@ -125,10 +160,31 @@ fn generate_implements_dubug_trait(
     for g in generic_params.params.iter_mut() {
         if let syn::GenericParam::Type(t) = g {
             let type_param_name = t.ident.to_string();
-            if phantomdata_generic_types.contains(&type_param_name) && !struct_field_types.contains(&type_param_name) {
+            if phantomdata_generic_types.contains(&type_param_name)
+                && !struct_field_types.contains(&type_param_name)
+            {
+                continue;
+            }
+
+            if generic_associate_types.contains_key(&type_param_name)
+                && !struct_field_types.contains(&type_param_name)
+            {
                 continue;
             }
             t.bounds.push(parse_quote!(std::fmt::Debug));
+        }
+    }
+
+    // 关联类型的约束要放入where语句中
+    generic_params.make_where_clause();
+    for (_, type_paths) in generic_associate_types.iter() {
+        for ty in type_paths {
+            generic_params
+                .where_clause
+                .as_mut()
+                .unwrap()
+                .predicates
+                .push(parse_quote!(#ty: std::fmt::Debug))
         }
     }
 
