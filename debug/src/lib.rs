@@ -125,6 +125,24 @@ fn get_generic_associate_types(ast: &DeriveInput) -> syn::Result<HashMap<String,
     return Ok(visitor.associate_type_paths);
 }
 
+fn get_struct_escape_hatch(ast: &DeriveInput) -> Option<String> {
+    if let Some(attr) = ast.attrs.last() {
+        if let Ok(syn::Meta::List(syn::MetaList { nested, .. })) = attr.parse_meta() {
+            let mut nested_iter = nested.iter();
+            while let Some(syn::NestedMeta::Meta(syn::Meta::NameValue(path_value))) =
+                nested_iter.next()
+            {
+                if path_value.path.is_ident("bound") {
+                    if let syn::Lit::Str(ref lit) = path_value.lit {
+                        return Some(lit.value());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn generate_implements_dubug_trait(
     ast: &DeriveInput,
     fields: &StructFileds,
@@ -157,34 +175,45 @@ fn generate_implements_dubug_trait(
     }
 
     let mut generic_params = ast.generics.clone();
-    for g in generic_params.params.iter_mut() {
-        if let syn::GenericParam::Type(t) = g {
-            let type_param_name = t.ident.to_string();
-            if phantomdata_generic_types.contains(&type_param_name)
-                && !struct_field_types.contains(&type_param_name)
-            {
-                continue;
-            }
 
-            if generic_associate_types.contains_key(&type_param_name)
-                && !struct_field_types.contains(&type_param_name)
-            {
-                continue;
+    if let Some(escape_hatch) = get_struct_escape_hatch(ast) {
+        generic_params.make_where_clause();
+        generic_params
+            .where_clause
+            .as_mut()
+            .unwrap()
+            .predicates
+            .push(syn::parse_str(&escape_hatch).unwrap());
+    } else {
+        for g in generic_params.params.iter_mut() {
+            if let syn::GenericParam::Type(t) = g {
+                let type_param_name = t.ident.to_string();
+                if phantomdata_generic_types.contains(&type_param_name)
+                    && !struct_field_types.contains(&type_param_name)
+                {
+                    continue;
+                }
+
+                if generic_associate_types.contains_key(&type_param_name)
+                    && !struct_field_types.contains(&type_param_name)
+                {
+                    continue;
+                }
+                t.bounds.push(parse_quote!(std::fmt::Debug));
             }
-            t.bounds.push(parse_quote!(std::fmt::Debug));
         }
-    }
 
-    // 关联类型的约束要放入where语句中
-    generic_params.make_where_clause();
-    for (_, type_paths) in generic_associate_types.iter() {
-        for ty in type_paths {
-            generic_params
-                .where_clause
-                .as_mut()
-                .unwrap()
-                .predicates
-                .push(parse_quote!(#ty: std::fmt::Debug))
+        // 关联类型的约束要放入where语句中
+        generic_params.make_where_clause();
+        for (_, type_paths) in generic_associate_types.iter() {
+            for ty in type_paths {
+                generic_params
+                    .where_clause
+                    .as_mut()
+                    .unwrap()
+                    .predicates
+                    .push(parse_quote!(#ty: std::fmt::Debug))
+            }
         }
     }
 

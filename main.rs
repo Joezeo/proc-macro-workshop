@@ -10,6 +10,7 @@ use std::marker::PhantomData;
 
 use derive_builder::Builder;
 use derive_debug::CustomDebug;
+use std::fmt::Debug;
 
 #[derive(Builder)]
 #[allow(dead_code)]
@@ -32,6 +33,17 @@ pub struct Struct<T, U, W: Trait> {
     u: U,
     phantomdata: PhantomData<T>,
     tit: PhantomData<W::Type>,
+}
+
+#[derive(CustomDebug)]
+#[debug(bound = "T::Type: Debug")]
+pub struct Wrapper<T: Trait> {
+    field: Field<T>,
+}
+
+#[derive(CustomDebug)]
+struct Field<T: Trait> {
+    values: Vec<T::Type>,
 }
 
 fn main() {
